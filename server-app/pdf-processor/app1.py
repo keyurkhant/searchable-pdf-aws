@@ -12,8 +12,8 @@ from processor import make_pdf_doc_searchable
 
 from pathlib import Path
 app = Flask(__name__)
-aws_access_key_id = "AKIAQNI4KP7PKXJAFOVL"
-aws_secret_access_key = "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"
+aws_access_key_id = ""
+aws_secret_access_key = ""
 _id = None  # Initialize _id to None
 
 @app.route('/document')
