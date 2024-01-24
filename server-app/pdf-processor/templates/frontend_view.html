@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Searchable PDF</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f4f4f4;
+        margin: 20px;
+      }
+
+      h1 {
+        color: #c5a485;
+        text-align: center;
+      }
+
+      form {
+        max-width: 550px;
+        margin: 0 auto;
+        background-color: #ffffff;
+        padding: 30px;
+        border-radius: 10px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      }
+
+      label {
+        display: block;
+        margin-bottom: 15px;
+        color: #444444;
+        font-size: 18px;
+      }
+
+      input[type="text"],
+      input[type="file"],
+      textarea {
+        width: 95%;
+        padding: 12px;
+        margin-bottom: 20px;
+        margin-right: 20px;
+
+        border: 1px solid #cccccc;
+        border-radius: 5px;
+        font-size: 16px;
+      }
+
+      input[type="file"] {
+        border: none;
+        background-color: #f8f8f8;
+      }
+
+      input[type="submit"] {
+        width: 100%;
+        padding: 12px;
+        background-color: #c5a485;
+        color: #ffffff;
+        border: none;
+        border-radius: 5px;
+        font-size: 18px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: background-color 0.3s;
+      }
+
+      input[type="submit"]:hover {
+        background-color: #ff4949;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Searchable PDF</h1>
+    <form method="post" enctype="multipart/form-data" action="/upload">
+      <label for="file">Select an Image:</label>
+      <input type="file" id="file" name="file" required />
+
+      <input type="submit" value="Upload" />
+    </form>
+  </body>
+</html>

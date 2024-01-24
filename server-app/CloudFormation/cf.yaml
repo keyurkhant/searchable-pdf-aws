@@ -1,0 +1,245 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation Script for Cloud Computing Term Assignment
+
+Parameters:
+  InitializerLambdaName:
+      Type: String
+      Default: textract-initializer-a
+  ProcessorLambdaName:
+      Type: String
+      Default: textract-processor-a
+  InputBucketName:
+      Type: String
+      Default: input-pdf-documents-b00935171-a
+  ResponseBucketName:
+      Type: String
+      Default: textract-json-documents-b00935171-a
+  OutputBucketName:
+      Type: String
+      Default: output-pdf-documents-b00935171-a
+  EC2KeyName:
+    Type: String
+    Default: CloudComputingKeyPair
+  EC2ImageId:
+    Type: String
+    Default: ami-0230bd60aa48260c6
+  
+
+Resources:
+  ProcessorVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/20
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref ProcessorVPC
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+    
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref ProcessorVPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref ProcessorVPC
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.small
+      KeyName: !Ref EC2KeyName
+      ImageId: !Ref EC2ImageId
+      NetworkInterfaces:
+        - GroupSet:
+            - !Ref EC2SecurityGroup
+          DeviceIndex: "0"
+          SubnetId: !Ref PublicSubnet
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          sudo su
+          yum update -y
+          yum install -y git        
+          git clone https://kpkhant:glpat-FFy_gf5x1kzsahNVrmvp@git.cs.dal.ca/courses/2023-fall/csci5409/kpkhant.git
+          cd kpkhant/Term_Assignment/server-app/pdf-processor
+          python3 -m venv venv
+          source venv/bin/activate
+          pip3 install -r requirements.txt
+          python3 app1.py
+
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable SSH access and HTTP via port 80
+      SecurityGroupIngress:        
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 5002
+          ToPort: 5002
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref ProcessorVPC
+
+  InitializerLambdaFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      FunctionName: !Ref InitializerLambdaName
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.11
+      Timeout: 24
+      Role: arn:aws:iam::028513566686:role/admin-role
+      Code:
+        S3Bucket: cloud-computing-lambdas
+        S3Key: initializer-lambda.zip
+      Environment:
+        Variables:
+          JSON_BUCKET_NAME: !Ref ResponseBucketName
+
+  InputPDFS3Bucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Ref InputBucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: "s3:ObjectCreated:*"
+            Function: !GetAtt InitializerLambdaFunction.Arn
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      VersioningConfiguration:
+        Status: Suspended
+    
+  InitializerLambdaInvokePermission:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      FunctionName: !Ref InitializerLambdaFunction
+      Action: "lambda:InvokeFunction"
+      Principal: "s3.amazonaws.com"
+      SourceArn: !Sub arn:aws:s3:::${InputBucketName}
+
+  ProcessorLambdaFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      FunctionName: !Ref ProcessorLambdaName
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.11
+      Timeout: 24
+      Role: arn:aws:iam::028513566686:role/admin-role
+      Code:
+        S3Bucket: cloud-computing-lambdas
+        S3Key: processor-lambda.zip
+      Environment:
+        Variables:
+          EC2_URL: !Sub http://${EC2Instance.PublicIp}:5002/
+          INPUT_BUCKET_NAME: !Ref InputBucketName
+          OUTPUT_BUCKET_NAME: !Ref OutputBucketName
+
+  ResponsePDFS3Bucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Ref ResponseBucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: "s3:ObjectCreated:*"
+            Function: !GetAtt ProcessorLambdaFunction.Arn
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      VersioningConfiguration:
+        Status: Suspended
+
+  ProcessorLambdaInvokePermission:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      FunctionName: !Ref ProcessorLambdaFunction
+      Action: "lambda:InvokeFunction"
+      Principal: "s3.amazonaws.com"
+      SourceArn: !Sub arn:aws:s3:::${ResponseBucketName}
+  
+  OutputPDFS3Bucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Ref OutputBucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      VersioningConfiguration:
+        Status: Suspended
+  
+  PublicReadBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref OutputPDFS3Bucket
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action:
+              - s3:*
+            Resource: !Sub "arn:aws:s3:::${OutputBucketName}/*"
+
+Outputs:
+  InputPDFS3Bucket:
+    Description: "input-pdf-documents-b00935171-a"
+    Value: !Ref InputPDFS3Bucket
+  
+  ResponsePDFS3Bucket:
+    Description: "textract-json-documents-b00935171-a"
+    Value: !Ref ResponsePDFS3Bucket
+  
+  OutputPDFS3Bucket:
+    Description: "output-pdf-documents-b00935171-a"
+    Value: !Ref OutputPDFS3Bucket
+
+  ApplicationURL:
+    Description: Flask Application URL
+    Value: !Sub http://${EC2Instance.PublicIp}:5002/document
